@@ -1,5 +1,5 @@
-from retrieval_with_filter import retrieve
-from answer_generator import generate_answer
+from backend.retrieval_with_filter import retrieve
+from backend.answer_generator import generate_answer
 
 queries = [
     "How many casual leaves do employees get?",

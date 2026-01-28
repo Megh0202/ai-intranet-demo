@@ -1,9 +1,19 @@
-from langchain_community.llms import Ollama
+from __future__ import annotations
+
 import json
 
-llm = Ollama(model="llama3")
+from backend.ollama_clients import get_llm
+from backend.settings import Settings, get_settings
 
-def rerank_chunks(query, retrieved_docs, top_k=3):
+def rerank_chunks(
+    query,
+    retrieved_docs,
+    top_k=3,
+    *,
+    settings: Settings | None = None,
+):
+    s = settings or get_settings()
+    llm = get_llm(s)
     if not retrieved_docs:
         return []
 
@@ -37,3 +47,4 @@ Excerpts:
     except Exception:
         # Absolute fallback
         return retrieved_docs[:top_k]
+

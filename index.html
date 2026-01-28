@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Knowledge Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100-vh;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4 min-h-screen">
+
+    <div class="glass w-full max-w-2xl h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+        <!-- Header -->
+        <div class="p-6 border-b border-white/20">
+            <h1 class="text-white text-xl font-bold">Knowledge Assistant</h1>
+            <p class="text-white/60 text-sm">Query your Vector DB</p>
+        </div>
+
+        <!-- Chat History -->
+        <div id="chat-box" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <div class="bg-white/20 text-white p-4 rounded-2xl rounded-tl-none self-start max-w-[80%]">
+                Hello! Ask me anything from the database.
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-6 border-t border-white/20">
+            <div class="flex gap-4">
+                <input type="text" id="user-input" placeholder="Type your query..." 
+                       class="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                <button onclick="sendQuery()" 
+                        class="bg-white text-purple-700 font-bold py-2 px-6 rounded-xl hover:bg-purple-100 transition-all">
+                    Send
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function sendQuery() {
+            const input = document.getElementById('user-input');
+            const chatBox = document.getElementById('chat-box');
+            const query = input.value.trim();
+            if (!query) return;
+
+            // Display user message
+            chatBox.innerHTML += `<div class="bg-purple-600/40 text-white p-4 rounded-2xl rounded-tr-none self-end ml-auto max-w-[80%]">${query}</div>`;
+            input.value = '';
+
+            try {
+                const response = await fetch('http://localhost:8000/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query, return_chunks: true })
+                });
+
+                const data = await response.json();
+
+                // Display bot message with sources
+                let sourceHtml = data.sources.length ? `<div class="mt-2 text-xs text-white/50 italic">Sources: ${data.sources.join(', ')}</div>` : '';
+                
+                chatBox.innerHTML += `
+                    <div class="bg-white/20 text-white p-4 rounded-2xl rounded-tl-none self-start max-w-[80%]">
+                        <p>${data.answer}</p>
+                        <p class="text-xs mt-2 text-purple-300 font-bold">Confidence: ${(data.confidence * 100).toFixed(1)}%</p>
+                        ${sourceHtml}
+                    </div>`;
+                
+                chatBox.scrollTop = chatBox.scrollHeight;
+            } catch (error) {
+                chatBox.innerHTML += `<div class="bg-red-500/30 text-white p-4 rounded-2xl self-start">Error: Could not connect to the API.</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

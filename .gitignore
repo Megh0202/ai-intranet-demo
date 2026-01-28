@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+# Local environment
+.env
+
+# Local vector DB (generated)
+vectordb/
+
+# Local virtual environment included in workspace
+BOT/
+
+# Build/output artifacts
+.dist/

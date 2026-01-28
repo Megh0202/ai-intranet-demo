@@ -1,8 +1,11 @@
-from langchain_community.llms import Ollama
+from __future__ import annotations
 
-llm = Ollama(model="llama3")
+from backend.ollama_clients import get_llm
+from backend.settings import Settings, get_settings
 
-def classify_intent(query: str) -> str:
+def classify_intent(query: str, *, settings: Settings | None = None) -> str:
+    s = settings or get_settings()
+    llm = get_llm(s)
     prompt = f"""
 You are an enterprise AI router.
 
@@ -28,3 +31,4 @@ Reply with only one word.
         return "IT"
 
     return "GENERAL"
+
