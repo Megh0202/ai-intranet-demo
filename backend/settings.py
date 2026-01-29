@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     ollama_embed_model: str = "nomic-embed-text"
     ollama_timeout_seconds: int = 120
 
+    # MongoDB (chat history)
+    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_db_name: str = "ai_intranet_demo"
+
+    # External ticket API (Node/Express)
+    ticket_api_base_url: str = "http://127.0.0.1:5000"
+
     # Retrieval/reranking
     retrieval_k: int = 15
     rerank_top_k: int = 3

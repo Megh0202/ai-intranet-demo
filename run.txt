@@ -1,0 +1,67 @@
+MANUAL RUN STEPS (Windows)
+
+0) Prerequisites
+	 - Python installed OR use the repo venv under ./BOT
+	 - Node.js + npm installed
+	 - MongoDB running locally (port 27017) - MongoDB Compass to be installed, and MongoDB Server to be installed in the PC
+	 - Ollama running locally (port 11434)
+
+1) Start MongoDB (required)
+	 Option A (Docker):
+		 docker run --name intranet-mongo -p 27017:27017 -d mongo:7
+	 Option B: start your local MongoDB service so it listens on 127.0.0.1:27017
+
+2) Start Ollama + pull models (required)
+	 - Install and run Ollama: https://ollama.com
+	 - Pull models:
+		 ollama pull llama3.2
+		 ollama pull nomic-embed-text
+
+3) Python setup (required)
+	 From repo root in PowerShell:
+		 .\BOT\Scripts\Activate.ps1
+		 python -m pip install -r requirements.txt
+
+	 NOTE: If you run uvicorn using a different Python (system Python without deps), you'll get:
+		 ModuleNotFoundError: No module named 'fastapi'
+
+4) Configure env (recommended)
+	 - Copy .env.example -> .env and edit if needed.
+	 - Chat Mongo defaults are OK if Mongo is local.
+	 - Ticket API base URL (optional): AI_TICKET_API_BASE_URL=http://127.0.0.1:5000
+
+5) Ingest PDFs into Chroma (required once)
+	 From repo root (venv activated):
+		 python -m backend.ingest
+
+6) Start FastAPI backend (Terminal 1)
+	 From repo root (venv activated):
+		 python -m uvicorn backend.api:app --reload --port 8000
+
+	 Verify:
+		 http://127.0.0.1:8000/health
+		 http://127.0.0.1:8000/docs
+
+7) Start Ticket API (Terminal 2) (optional, for ticket creation)
+	 From repo root:
+		 cd Ticket\Backend
+		 npm install
+		 node index.js
+
+	 Verify:
+		 http://127.0.0.1:5000/
+
+8) Start React frontend (Terminal 3)
+	 From repo root:
+		 cd frontend
+		 npm install
+		 npm run dev
+
+	 Open:
+		 http://127.0.0.1:5173
+
+9) One-command launchers
+	 - Windows PowerShell:
+		 .\run.ps1
+	 - Git Bash:
+		 bash ./run.sh

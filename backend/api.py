@@ -9,6 +9,9 @@ from backend.service import RetrievedChunk, answer_query
 from backend.settings import get_settings
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.chat_api import router as chat_router
+from backend.db import close_mongo_client, ensure_indexes
+
 app = FastAPI(
     title="AI Intranet Demo API",
     version="1.0.0",
@@ -21,6 +24,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    await ensure_indexes()
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    close_mongo_client()
 
 
 
@@ -43,6 +56,9 @@ class QueryResponse(BaseModel):
     confidence: float
     sources: list[str]
     chunks: list[ChunkResponse] | None = None
+
+
+app.include_router(chat_router)
 
 
 @app.get("/health")

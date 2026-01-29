@@ -3,7 +3,14 @@ from __future__ import annotations
 from backend.ollama_clients import get_llm
 from backend.settings import Settings, get_settings
 
-def generate_answer(query, retrieved_docs, *, settings: Settings | None = None):
+
+def generate_answer(
+    query,
+    retrieved_docs,
+    *,
+    settings: Settings | None = None,
+    compute_confidence: bool = True,
+):
     s = settings or get_settings()
     llm = get_llm(s)
     if not retrieved_docs:
@@ -41,25 +48,27 @@ def generate_answer(query, retrieved_docs, *, settings: Settings | None = None):
     """
     answer = llm.invoke(answer_prompt).strip()
 
-    # 2. Self-evaluation for confidence
-    confidence_prompt = f"""
-        You are reviewing an answer generated from internal documents.
+    confidence = 0.0
+    if compute_confidence:
+        # 2. Self-evaluation for confidence
+        confidence_prompt = f"""
+            You are reviewing an answer generated from internal documents.
 
-        Question:
-        {query}
+            Question:
+            {query}
 
-        Answer:
-        {answer}
+            Answer:
+            {answer}
 
-        Based ONLY on the provided content, rate how well the answer is supported.
-        Return a number between 0 and 1.
-        Return ONLY the number.
-        """
-    try:
-        confidence = float(llm.invoke(confidence_prompt).strip())
-        confidence = max(0.0, min(confidence, 1.0))
-    except:
-        confidence = 0.50
+            Based ONLY on the provided content, rate how well the answer is supported.
+            Return a number between 0 and 1.
+            Return ONLY the number.
+            """
+        try:
+            confidence = float(llm.invoke(confidence_prompt).strip())
+            confidence = max(0.0, min(confidence, 1.0))
+        except:
+            confidence = 0.50
 
     return {
         "answer": answer,
