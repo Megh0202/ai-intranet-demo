@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+const TICKETING_UI_BASE_URL = (import.meta.env.VITE_TICKETING_UI_BASE_URL || 'http://127.0.0.1:5174').replace(/\/+$/, '')
 
 function getClientId() {
   const key = 'intranet_chat_client_id'
@@ -66,6 +67,19 @@ function MessageBubble({ msg, onFeedback, onCreateTicket, ticketState }) {
   const isPending = !isUser && (msg.pending || String(msg.id || '').startsWith('temp-') || msg.content === '…')
   const canFeedback = !isPending && !isUser && msg.role === 'assistant' && typeof onFeedback === 'function'
   const currentFeedback = msg.feedback || 'none'
+  const feedbackLocked = currentFeedback !== 'none'
+
+  const persistedTicket = msg.ticket || null
+  const createdTicketId = ticketState?.resp?.ticket?.json?.ticket?.id || null
+  const effectiveTicketId = createdTicketId || persistedTicket?.id || null
+  const effectiveTicketTitle = ticketState?.resp?.title || persistedTicket?.title || null
+
+  const [ticketOpen, setTicketOpen] = useState(false)
+  const [ticketDetails, setTicketDetails] = useState('')
+  function openTicketingUi(ticketId) {
+    const url = ticketId ? `${TICKETING_UI_BASE_URL}/ticket/${encodeURIComponent(ticketId)}` : TICKETING_UI_BASE_URL
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   return (
     <div className={isUser ? 'msgRow user' : 'msgRow assistant'}>
@@ -93,25 +107,97 @@ function MessageBubble({ msg, onFeedback, onCreateTicket, ticketState }) {
           <div className="ticketRow">
             {ticketState?.status === 'creating' && <span className="muted">Creating ticket…</span>}
             {ticketState?.status === 'created' && (
-              <span className="muted">Ticket created{ticketState?.resp?.title ? `: ${ticketState.resp.title}` : ''}</span>
+              <div className="ticketCreated">
+                <span className="muted">
+                  Ticket created{effectiveTicketTitle ? `: ${effectiveTicketTitle}` : ''}
+                  {effectiveTicketId ? ` (#${effectiveTicketId})` : ''}
+                </span>
+                <button
+                  className="btnSm"
+                  type="button"
+                  onClick={() => openTicketingUi(effectiveTicketId)}
+                >
+                  View ticket
+                </button>
+              </div>
             )}
-            {ticketState?.status === 'error' && <span className="muted">Ticket failed: {ticketState.error}</span>}
-            {!ticketState && (
+            {ticketState?.status === 'error' && (
+              <span className="muted">
+                Ticket failed: {ticketState.error}{' '}
+                <button
+                  className="btnSm"
+                  type="button"
+                  onClick={() => onCreateTicket(msg.id, ticketState?.draft)}
+                >
+                  Retry
+                </button>
+              </span>
+            )}
+
+            {!ticketState && !!persistedTicket && (
+              <div className="ticketCreated">
+                <span className="muted">
+                  Ticket created{persistedTicket?.title ? `: ${persistedTicket.title}` : ''}
+                  {persistedTicket?.id ? ` (#${persistedTicket.id})` : ''}
+                </span>
+                <button className="btnSm" type="button" onClick={() => openTicketingUi(persistedTicket?.id || null)}>
+                  View ticket
+                </button>
+              </div>
+            )}
+
+            {!ticketState && !persistedTicket && !ticketOpen && (
               <>
                 <span className="muted">Create a ticket?</span>
-                <button className="btnSm" type="button" onClick={() => onCreateTicket(msg.id)}>
+                <button className="btnSm" type="button" onClick={() => setTicketOpen(true)}>
                   Yes
                 </button>
               </>
             )}
+
+            {!ticketState && ticketOpen && (
+              <form
+                className="ticketForm"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  onCreateTicket(msg.id, { details: ticketDetails })
+                }}
+              >
+                <textarea
+                  className="ticketText"
+                  value={ticketDetails}
+                  onChange={(e) => setTicketDetails(e.target.value)}
+                  placeholder="Optional: add extra details for the agent (device, urgency, steps tried, error messages)…"
+                  rows={4}
+                />
+                <div className="ticketActions">
+                  <button className="btnSm" type="submit">
+                    Create
+                  </button>
+                  <button
+                    className="btnSm ghost"
+                    type="button"
+                    onClick={() => {
+                      setTicketOpen(false)
+                      setTicketDetails('')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className="muted">Title & description will be generated by the agent.</div>
+              </form>
+            )}
           </div>
         )}
 
-        {canFeedback && (
+        {canFeedback && !feedbackLocked && (
           <div className="msgActions">
             <button
               className={currentFeedback === 'up' ? 'iconBtn active' : 'iconBtn'}
-              onClick={() => onFeedback(msg.id, currentFeedback === 'up' ? 'none' : 'up')}
+              onClick={() => {
+                onFeedback(msg.id, 'up')
+              }}
               title="Thumbs up"
               type="button"
             >
@@ -119,12 +205,20 @@ function MessageBubble({ msg, onFeedback, onCreateTicket, ticketState }) {
             </button>
             <button
               className={currentFeedback === 'down' ? 'iconBtn active' : 'iconBtn'}
-              onClick={() => onFeedback(msg.id, currentFeedback === 'down' ? 'none' : 'down')}
+              onClick={() => {
+                onFeedback(msg.id, 'down')
+              }}
               title="Thumbs down"
               type="button"
             >
               👎
             </button>
+          </div>
+        )}
+
+        {canFeedback && feedbackLocked && (
+          <div className="msgActions">
+            <span className="muted">Rated {currentFeedback === 'up' ? '👍' : currentFeedback === 'down' ? '👎' : ''}</span>
           </div>
         )}
       </div>
@@ -211,14 +305,29 @@ export default function App() {
     }
   }
 
-  async function createTicketForMessage(messageId) {
+  async function createTicketForMessage(messageId, draft) {
     setError(null)
-    setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'creating' } }))
+    setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'creating', draft: draft || null } }))
     try {
-      const resp = await apiFetch(`/chat/messages/${messageId}/ticket`, { method: 'POST' })
+      const payload = draft && typeof draft === 'object' ? draft : {}
+      const resp = await apiFetch(`/chat/messages/${messageId}/ticket`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
       setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'created', resp } }))
+
+      const ticketId = resp?.ticket?.json?.ticket?.id
+      if (typeof ticketId === 'string' && ticketId.trim()) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, ticket: { id: ticketId.trim(), title: resp?.title || '', description: resp?.description || '' } }
+              : m
+          )
+        )
+      }
     } catch (e) {
-      setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'error', error: e.message } }))
+      setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'error', error: e.message, draft: draft || prev?.[messageId]?.draft || null } }))
     }
   }
 

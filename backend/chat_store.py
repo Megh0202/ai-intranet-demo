@@ -171,6 +171,37 @@ async def set_message_feedback(
     return updated
 
 
+async def set_message_ticket(
+    message_id: str,
+    *,
+    ticket_id: str,
+    title: str,
+    description: str,
+) -> dict[str, Any]:
+    db = get_database()
+    oid = _to_object_id(message_id)
+
+    doc = {
+        "id": ticket_id,
+        "title": title,
+        "description": description,
+        "created_at": utcnow(),
+    }
+
+    await db.messages.update_one(
+        {"_id": oid},
+        {"$set": {"ticket": doc}},
+    )
+
+    updated = await db.messages.find_one({"_id": oid})
+    if not updated:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    updated = clean_mongo_id(updated)
+    updated["conversation_id"] = str(updated["conversation_id"])
+    return updated
+
+
 async def get_message(message_id: str) -> dict[str, Any]:
     db = get_database()
     oid = _to_object_id(message_id)

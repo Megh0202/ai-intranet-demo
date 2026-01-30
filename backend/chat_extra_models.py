@@ -39,3 +39,9 @@ class TicketCreateResponse(BaseModel):
     title: str
     description: str
     ticket: dict[str, Any]
+
+
+class TicketCreateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=5000)
+    details: str | None = Field(default=None, max_length=2000)

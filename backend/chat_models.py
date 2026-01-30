@@ -20,6 +20,13 @@ class ConversationResponse(BaseModel):
     updated_at: datetime
 
 
+class TicketInfo(BaseModel):
+    id: str
+    title: str
+    description: str
+    created_at: datetime | None = None
+
+
 class MessageResponse(BaseModel):
     id: str
     conversation_id: str
@@ -32,6 +39,7 @@ class MessageResponse(BaseModel):
     error: bool = False
     feedback: str | None = None
     feedback_comment: str | None = None
+    ticket: TicketInfo | None = None
 
 
 class SendMessageRequest(BaseModel):

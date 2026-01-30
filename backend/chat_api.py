@@ -20,6 +20,7 @@ from backend.chat_extra_models import (
     DeleteConversationResponse,
     MessageFeedbackRequest,
     MessageFeedbackResponse,
+    TicketCreateRequest,
     TicketCreateResponse,
 )
 from backend.profile_models import ProfileResponse, ProfileUpdateRequest
@@ -34,6 +35,7 @@ from backend.chat_store import (
     list_conversations,
     list_messages,
     set_message_feedback,
+    set_message_ticket,
     update_conversation_title,
 )
 from backend.service import answer_query
@@ -188,6 +190,11 @@ async def send_message(conversation_id: str, req: SendMessageRequest) -> SendMes
 
 @router.post("/messages/{message_id}/feedback", response_model=MessageFeedbackResponse)
 async def message_feedback(message_id: str, req: MessageFeedbackRequest) -> MessageFeedbackResponse:
+    msg = await get_message(message_id)
+    existing = (msg.get("feedback") or "none")
+    if existing and existing != "none":
+        raise HTTPException(status_code=409, detail="Feedback already submitted for this message")
+
     updated = await set_message_feedback(message_id, feedback=req.feedback, comment=req.comment)
     return MessageFeedbackResponse(
         id=updated["id"],
@@ -299,7 +306,7 @@ async def download_source_file(message_id: str, source_name: str):
 
 
 @router.post("/messages/{message_id}/ticket", response_model=TicketCreateResponse)
-async def create_ticket(message_id: str) -> TicketCreateResponse:
+async def create_ticket(message_id: str, req: TicketCreateRequest | None = None) -> TicketCreateResponse:
     s = get_settings()
     msg = await get_message(message_id)
     if msg.get("role") != "assistant":
@@ -312,6 +319,23 @@ async def create_ticket(message_id: str) -> TicketCreateResponse:
     user_text = (user_msg or {}).get("content") or ""
     assistant_text = msg.get("content") or ""
 
-    title, description = generate_ticket_title_description(user_text, assistant_text, settings=s)
+    override_title = (req.title or "").strip() if req else ""
+    override_description = (req.description or "").strip() if req else ""
+    extra_details = (req.details or "").strip() if req else ""
+    if override_title and override_description:
+        title, description = override_title, override_description
+    else:
+        title, description = generate_ticket_title_description(user_text, assistant_text, extra_details=extra_details or None, settings=s)
+
     ticket = await create_ticket_via_api(title=title, description=description, settings=s)
+
+    # Persist ticket info on the message so the UI can show it later.
+    try:
+        ticket_id = (((ticket or {}).get("json") or {}).get("ticket") or {}).get("id")
+        if isinstance(ticket_id, str) and ticket_id.strip():
+            await set_message_ticket(message_id, ticket_id=ticket_id.strip(), title=title, description=description)
+    except Exception:
+        # Non-fatal: ticket was created (or attempted); message persistence is best-effort.
+        pass
+
     return TicketCreateResponse(ok=True, title=title, description=description, ticket=ticket)

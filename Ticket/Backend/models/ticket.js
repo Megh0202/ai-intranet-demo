@@ -8,21 +8,25 @@ const ticketSchema = new mongoose.Schema({
         required: true,
         default: ()=> crypto.randomBytes(5).toString('hex')
     },
-    title: String,
-    description: String,
+    title: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 200,
+    },
+    description: {
+        type: String,
+        trim: true,
+        maxlength: 5000,
+        default: "",
+    },
     status: {
         type: String,
         enum: ['open', 'in progress', 'closed'],
         default: 'open'
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now
     }
+}, {
+    timestamps: true,
 });
 
 module.exports = mongoose.model('Ticket', ticketSchema);

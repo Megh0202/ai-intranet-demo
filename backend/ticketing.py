@@ -13,10 +13,14 @@ def generate_ticket_title_description(
     user_text: str,
     assistant_text: str,
     *,
+    extra_details: str | None = None,
     settings: Settings | None = None,
 ) -> tuple[str, str]:
     s = settings or get_settings()
     llm = get_llm(s)
+
+    extra = (extra_details or "").strip()
+    extra_block = f"\n\nAdditional user details (if any):\n{extra}" if extra else ""
 
     prompt = f"""
 You generate support tickets.
@@ -30,6 +34,7 @@ User message:
 
 Assistant response:
 {assistant_text}
+{extra_block}
 """.strip()
 
     raw = (llm.invoke(prompt) or "").strip()
