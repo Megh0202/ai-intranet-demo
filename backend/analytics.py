@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+import unicodedata
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -8,7 +9,16 @@ from backend.db import get_database, utcnow
 
 
 def _normalize_question(text: str) -> str:
-    return " ".join(text.strip().lower().split())
+    # Normalize unicode, drop punctuation/symbols, collapse whitespace.
+    normalized = unicodedata.normalize("NFKD", text.lower())
+    kept = []
+    for ch in normalized:
+        cat = unicodedata.category(ch)
+        if cat.startswith("P") or cat.startswith("S"):
+            continue
+        kept.append(ch)
+    cleaned = "".join(kept)
+    return " ".join(cleaned.strip().split())
 
 
 def _date_range(start: date, end: date) -> list[date]:

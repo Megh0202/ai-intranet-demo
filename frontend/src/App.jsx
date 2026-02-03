@@ -411,6 +411,7 @@ export default function App() {
   const [analyticsDays, setAnalyticsDays] = useState(30)
   const [loadingAnalytics, setLoadingAnalytics] = useState(false)
   const [analyticsError, setAnalyticsError] = useState(null)
+  const [localTitles, setLocalTitles] = useState({})
 
   const [ticketByMessageId, setTicketByMessageId] = useState({})
   const [profile, setProfile] = useState(null)
@@ -426,6 +427,13 @@ export default function App() {
     setLoadingConversations(true)
     try {
       const items = await apiFetch('/chat/conversations')
+      setLocalTitles(prev => {
+        const next = { ...prev }
+        items.forEach((c) => {
+          if (c.title && c.title.trim()) next[c.id] = c.title
+        })
+        return next
+      })
       setConversations(items)
       if (autoSelect && items.length > 0) setActiveConversationId(activeConversationId || items[0].id)
     } catch (e) { setError(e.message) }
@@ -496,6 +504,16 @@ export default function App() {
         setActiveConversationId(created.id)
         conversationId = created.id
       }
+
+      // Optimistically set the title from the first user message if missing.
+      const nextTitle = text.length > 60 ? `${text.slice(0, 60)}…` : text
+      setLocalTitles(prev => ({ ...prev, [conversationId]: nextTitle }))
+      setConversations(prev =>
+        prev.map(c => (c.id === conversationId && (!c.title || !c.title.trim()))
+          ? { ...c, title: nextTitle }
+          : c
+        )
+      )
 
       const resp = await apiFetch(`/chat/conversations/${conversationId}/messages`, {
         method: 'POST',
@@ -586,7 +604,7 @@ export default function App() {
                 className={c.id === activeConversationId ? 'convItemRow active' : 'convItemRow'}
                 onClick={() => { setActiveConversationId(c.id); setView('chat'); }}
               >
-                <div className="convTitle">{formatTitle(c.title)}</div>
+                <div className="convTitle">{formatTitle(localTitles[c.id] || c.title)}</div>
               </div>
             ))}
           </div>
@@ -598,7 +616,7 @@ export default function App() {
               <div className="topTitle">
                 {view === 'dashboard'
                   ? 'Analytics Dashboard'
-                  : (activeConversation ? formatTitle(activeConversation.title) : 'New Chat')}
+                  : (activeConversation ? formatTitle(localTitles[activeConversation.id] || activeConversation.title) : 'New Chat')}
               </div>
               <div className="topSub">
                 {view === 'dashboard' ? `Last ${analyticsDays} days` : 'How can I help you today?'}
@@ -608,7 +626,7 @@ export default function App() {
               {view === 'dashboard' && (
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <select
-                    style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '4px 8px' }}
+                    className="dashSelect"
                     value={analyticsDays}
                     onChange={(e) => setAnalyticsDays(Number(e.target.value))}
                   >

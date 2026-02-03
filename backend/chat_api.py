@@ -144,6 +144,17 @@ async def send_message(
         client_id=client_id,
     )
 
+    # Auto-title the conversation using the first user message if no title yet.
+    if not (conv.get("title") or "").strip():
+        raw = (req.content or "").strip().replace("\n", " ")
+        title = (raw[:60] + "…") if len(raw) > 60 else raw
+        if title:
+            try:
+                await update_conversation_title(conversation_id, title=title)
+                conv = await get_conversation(conversation_id)
+            except Exception:
+                pass
+
     assistant_content: str
     assistant_meta: dict
 

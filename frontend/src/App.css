@@ -335,6 +335,19 @@ body {
   font-weight: 700;
 }
 
+.dashSelect {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.dashSelect option {
+  color: #0b1226;
+  background: #ffffff;
+}
+
 .statSub {
   font-size: 0.75rem;
   color: var(--muted);
