@@ -16,6 +16,7 @@ class ConversationCreateRequest(BaseModel):
 class ConversationResponse(BaseModel):
     id: str
     title: str | None
+    client_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

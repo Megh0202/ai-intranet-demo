@@ -27,16 +27,17 @@ def generate_answer(
         context += doc.page_content + "\n\n"
         sources.add(doc.metadata.get("source", "Unknown Document"))
 
-    # 1. Generate answer
+    # 1. Generate answer with explicit supportiveness check
     answer_prompt = f"""
-    You are an Intranet AI assistant.
+    You are an expert Intranet AI assistant. Your goal is to provide accurate, concise, and helpful answers based ONLY on the provided Internal Content.
 
-    Rules:
-    - Answer ONLY using the information provided.
-    - Do NOT use outside knowledge.
-    - If the answer is NOT in the provided information, say:
-      "The requested information is not available in the internal documents."
-    - answer according to the questioner's tone.
+    CRITICAL INSTRUCTIONS:
+    1. Answer using ONLY the information provided in the "Internal Content" section below.
+    2. If the provided Internal Content does NOT contain enough information to answer the question fully, you MUST start your response with the exact phrase: "INSUFFICIENT_INFORMATION:". Then, explain what is missing or answer what you can from the text.
+    3. If the question is completely outside the scope of the provided content, say: "INSUFFICIENT_INFORMATION: The requested information is not available in the internal documents."
+    4. Do NOT use any outside knowledge or assumptions.
+    5. Maintain a professional tone that matches the questioner's.
+    6. Cite your sources if possible.
 
     Question:
     {query}
@@ -46,7 +47,17 @@ def generate_answer(
 
     Answer:
     """
-    answer = llm.invoke(answer_prompt).strip()
+    try:
+        answer = llm.invoke(answer_prompt).strip()
+    except Exception:
+        # Fallback to a concise extractive response if LLM is unavailable.
+        snippet = (retrieved_docs[0][0].page_content or "").strip()
+        snippet = snippet[:800] + ("..." if len(snippet) > 800 else "")
+        return {
+            "answer": f"Based on internal documents, the most relevant excerpt is:\n\n{snippet}",
+            "confidence": 0.25,
+            "sources": list(sources),
+        }
 
     confidence = 0.0
     if compute_confidence:

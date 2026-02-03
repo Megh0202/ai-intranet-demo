@@ -21,13 +21,25 @@ User Query:
 Reply with only one word.
 """
 
-    response = llm.invoke(prompt).strip().upper()
+    try:
+        response = llm.invoke(prompt).strip().upper()
+    except Exception:
+        lowered = query.lower()
+        if any(k in lowered for k in ("payroll", "leave", "benefit", "holiday", "policy", "hr")):
+            return "HR"
+        if any(k in lowered for k in ("vpn", "laptop", "email", "network", "wifi", "it", "password", "access")):
+            return "IT"
+        if any(k in lowered for k in ("invoice", "expense", "reimbursement", "budget", "finance", "payment")):
+            return "Finance"
+        return "GENERAL"
 
-    if response == "FINANCE":
+    cleaned = "".join([c for c in response.split()[0] if c.isalpha()]).upper()
+
+    if cleaned == "FINANCE":
         return "Finance"
-    if response == "HR":
+    if cleaned == "HR":
         return "HR"
-    if response == "IT":
+    if cleaned == "IT":
         return "IT"
 
     return "GENERAL"

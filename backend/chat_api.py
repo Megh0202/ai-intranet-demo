@@ -5,7 +5,7 @@ import zipfile
 from pathlib import Path
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 
 from backend.chat_models import (
@@ -16,6 +16,7 @@ from backend.chat_models import (
     SendMessageResponse,
 )
 from backend.chat_extra_models import (
+    AnalyticsResponse,
     ConversationUpdateRequest,
     DeleteConversationResponse,
     MessageFeedbackRequest,
@@ -23,6 +24,7 @@ from backend.chat_extra_models import (
     TicketCreateRequest,
     TicketCreateResponse,
 )
+from backend.analytics import compute_analytics
 from backend.profile_models import ProfileResponse, ProfileUpdateRequest
 from backend.profile_store import get_or_create_profile, update_profile
 from backend.chat_store import (
@@ -76,8 +78,14 @@ async def conversations() -> list[ConversationResponse]:
 
 
 @router.post("/conversations", response_model=ConversationResponse)
-async def create(req: ConversationCreateRequest) -> ConversationResponse:
-    created = await create_conversation(title=req.title)
+async def create(
+    req: ConversationCreateRequest,
+    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+) -> ConversationResponse:
+    created = await create_conversation(
+        title=req.title,
+        client_id=_client_id_from_headers(x_client_id),
+    )
     return ConversationResponse(**created)
 
 
@@ -118,8 +126,13 @@ async def messages(conversation_id: str) -> list[MessageResponse]:
     "/conversations/{conversation_id}/messages",
     response_model=SendMessageResponse,
 )
-async def send_message(conversation_id: str, req: SendMessageRequest) -> SendMessageResponse:
+async def send_message(
+    conversation_id: str,
+    req: SendMessageRequest,
+    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
+) -> SendMessageResponse:
     s = get_settings()
+    client_id = _client_id_from_headers(x_client_id)
 
     # Ensure conversation exists (nice 404)
     conv = await get_conversation(conversation_id)
@@ -128,6 +141,7 @@ async def send_message(conversation_id: str, req: SendMessageRequest) -> SendMes
         conversation_id=conversation_id,
         role="user",
         content=req.content,
+        client_id=client_id,
     )
 
     assistant_content: str
@@ -160,7 +174,7 @@ async def send_message(conversation_id: str, req: SendMessageRequest) -> SendMes
             "error": True,
         }
     except Exception as exc:
-        assistant_content = "Error: Failed to generate a response."
+        assistant_content = f"Error: Failed to generate a response. {exc}"
         assistant_meta = {
             "department": None,
             "confidence": None,
@@ -172,6 +186,7 @@ async def send_message(conversation_id: str, req: SendMessageRequest) -> SendMes
         conversation_id=conversation_id,
         role="assistant",
         content=assistant_content,
+        client_id=client_id,
         department=assistant_meta["department"],
         confidence=assistant_meta["confidence"],
         sources=assistant_meta["sources"],
@@ -339,3 +354,12 @@ async def create_ticket(message_id: str, req: TicketCreateRequest | None = None)
         pass
 
     return TicketCreateResponse(ok=True, title=title, description=description, ticket=ticket)
+
+
+@router.get("/analytics", response_model=AnalyticsResponse)
+async def analytics(
+    days: int = Query(default=30, ge=1, le=365),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> AnalyticsResponse:
+    data = await compute_analytics(days=days, limit=limit)
+    return AnalyticsResponse(**data)

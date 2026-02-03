@@ -16,12 +16,13 @@ def _to_object_id(id_str: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="Invalid id") from exc
 
 
-async def create_conversation(*, title: str | None = None) -> dict[str, Any]:
+async def create_conversation(*, title: str | None = None, client_id: str | None = None) -> dict[str, Any]:
     db = get_database()
     now = utcnow()
 
     doc = {
         "title": title,
+        "client_id": client_id,
         "created_at": now,
         "updated_at": now,
     }
@@ -34,10 +35,14 @@ async def create_conversation(*, title: str | None = None) -> dict[str, Any]:
     return clean_mongo_id(created)
 
 
-async def list_conversations(*, limit: int = 50) -> list[dict[str, Any]]:
+async def list_conversations(*, client_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
     db = get_database()
 
-    cursor = db.conversations.find({}).sort("updated_at", -1).limit(limit)
+    q: dict[str, Any] = {}
+    if client_id:
+        q["client_id"] = client_id
+
+    cursor = db.conversations.find(q).sort("updated_at", -1).limit(limit)
     items: list[dict[str, Any]] = []
     async for doc in cursor:
         items.append(clean_mongo_id(doc))
@@ -87,6 +92,7 @@ async def add_message(
     conversation_id: str,
     role: str,
     content: str,
+    client_id: str | None = None,
     department: str | None = None,
     confidence: float | None = None,
     sources: list[str] | None = None,
@@ -99,6 +105,7 @@ async def add_message(
     doc = {
         "conversation_id": conv_oid,
         "role": role,
+        "client_id": client_id,
         "content": content,
         "created_at": now,
         "department": department,

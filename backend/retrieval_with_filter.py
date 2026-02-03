@@ -20,7 +20,8 @@ def retrieve(query: str, *, settings: Settings | None = None):
     s = settings or get_settings()
 
     department = classify_intent(query, settings=s)
-    print(f"\n🧠 Routed to: {department}")
+    # Avoid non-ASCII characters to prevent Windows console encoding issues.
+    print(f"\nRouted to: {department}")
 
     if department == "GENERAL":
         return department, []

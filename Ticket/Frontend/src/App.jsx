@@ -101,6 +101,7 @@ function TicketListPage() {
   const [description, setDescription] = useState('');
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     refreshTickets();
@@ -158,6 +159,10 @@ function TicketListPage() {
 
       setTitle('');
       setDescription('');
+
+      if (created?.id) {
+        navigate(`/ticket/${encodeURIComponent(created.id)}`);
+      }
     } catch (err) {
       console.error('Error creating ticket:', err);
       setError(err?.message || 'Failed to create ticket');

@@ -39,12 +39,11 @@ Excerpts:
 {json.dumps(excerpts, indent=2)}
 """
 
-    response = llm.invoke(prompt).strip()
-
     try:
+        response = llm.invoke(prompt).strip()
         ids = json.loads(response)
         return [retrieved_docs[i] for i in ids if i < len(retrieved_docs)]
     except Exception:
-        # Absolute fallback
+        # Fallback to top-k by vector similarity if LLM rerank fails.
         return retrieved_docs[:top_k]
 

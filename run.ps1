@@ -18,6 +18,9 @@ function Get-PythonExe {
   $venvPy = Join-Path $Root 'BOT\Scripts\python.exe'
   if (Test-Path -LiteralPath $venvPy) { return $venvPy }
 
+  $agentVenvPy = Join-Path $Root 'agent\Scripts\python.exe'
+  if (Test-Path -LiteralPath $agentVenvPy) { return $agentVenvPy }
+
   $altVenvPy = Join-Path $Root '.venv\Scripts\python.exe'
   if (Test-Path -LiteralPath $altVenvPy) { return $altVenvPy }
 

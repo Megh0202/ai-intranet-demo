@@ -39,7 +39,12 @@ async def ensure_indexes() -> None:
     db = get_database()
 
     await db.conversations.create_index([("updated_at", -1)])
+    await db.conversations.create_index([("client_id", 1)])
     await db.messages.create_index([("conversation_id", 1), ("created_at", 1)])
+    await db.messages.create_index([("created_at", -1)])
+    await db.messages.create_index([("role", 1), ("created_at", -1)])
+    await db.messages.create_index([("client_id", 1), ("created_at", -1)])
+    await db.messages.create_index([("department", 1), ("created_at", -1)])
     await db.messages.create_index([("feedback", 1)])
     await db.profiles.create_index([("client_id", 1)], unique=True)
 

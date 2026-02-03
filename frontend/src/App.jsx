@@ -40,6 +40,47 @@ function formatTitle(title) {
   return t.length ? t : 'New chat'
 }
 
+function formatPercent(val) {
+  if (val === null || val === undefined) return '0%'
+  const v = Number(val)
+  return (v > 0 ? '+' : '') + v.toFixed(1) + '%'
+}
+const CHART_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#f97316', '#a855f7', '#14b8a6', '#ef4444']
+
+function buildLinePath(data, width = 320, height = 120, pad = 12) {
+  if (!data || data.length === 0) return { line: '', area: '' }
+  const maxVal = Math.max(...data.map((d) => d.questions || 0), 1)
+  const step = data.length > 1 ? (width - pad * 2) / (data.length - 1) : 0
+  const points = data.map((d, i) => {
+    const x = pad + step * i
+    const y = height - pad - ((d.questions || 0) / maxVal) * (height - pad * 2)
+    return [x, y]
+  })
+  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ')
+  const area = `${line} L ${points[points.length - 1][0]} ${height - pad} L ${points[0][0]} ${height - pad} Z`
+  return { line, area }
+}
+
+function buildPieSegments(topics) {
+  const total = (topics || []).reduce((sum, t) => sum + (t.count || 0), 0)
+  let offset = 0
+  return (topics || []).map((t, i) => {
+    const pct = total ? (t.count / total) * 100 : 0
+    const seg = {
+      label: t.topic,
+      count: t.count || 0,
+      color: CHART_COLORS[i % CHART_COLORS.length],
+      dashArray: `${pct} ${100 - pct}`,
+      dashOffset: 25 - offset,
+      pct,
+    }
+    offset += pct
+    return seg
+  })
+}
+
+
+
 function Sources({ sources, messageId }) {
   if (!sources || sources.length === 0) return null
   return (
@@ -70,12 +111,10 @@ function MessageBubble({ msg, onFeedback, onCreateTicket, ticketState }) {
   const feedbackLocked = currentFeedback !== 'none'
 
   const persistedTicket = msg.ticket || null
-  const createdTicketId = ticketState?.resp?.ticket?.json?.ticket?.id || null
-  const effectiveTicketId = createdTicketId || persistedTicket?.id || null
-  const effectiveTicketTitle = ticketState?.resp?.title || persistedTicket?.title || null
 
   const [ticketOpen, setTicketOpen] = useState(false)
   const [ticketDetails, setTicketDetails] = useState('')
+
   function openTicketingUi(ticketId) {
     const url = ticketId ? `${TICKETING_UI_BASE_URL}/ticket/${encodeURIComponent(ticketId)}` : TICKETING_UI_BASE_URL
     window.open(url, '_blank', 'noopener,noreferrer')
@@ -86,9 +125,9 @@ function MessageBubble({ msg, onFeedback, onCreateTicket, ticketState }) {
       <div className={isUser ? 'bubble bubbleUser' : 'bubble bubbleAssistant'}>
         <div className="msgText">
           {isPending ? (
-            <span className="typing">
-              <span className="typingDots" aria-label="Generating response" />
-            </span>
+            <div className="typing">
+              <span></span><span></span><span></span>
+            </div>
           ) : (
             msg.content
           )}
@@ -108,119 +147,250 @@ function MessageBubble({ msg, onFeedback, onCreateTicket, ticketState }) {
             {ticketState?.status === 'creating' && <span className="muted">Creating ticket…</span>}
             {ticketState?.status === 'created' && (
               <div className="ticketCreated">
-                <span className="muted">
-                  Ticket created{effectiveTicketTitle ? `: ${effectiveTicketTitle}` : ''}
-                  {effectiveTicketId ? ` (#${effectiveTicketId})` : ''}
-                </span>
-                <button
-                  className="btnSm"
-                  type="button"
-                  onClick={() => openTicketingUi(effectiveTicketId)}
-                >
-                  View ticket
-                </button>
+                <span className="muted">Ticket created</span>
+                <button className="btnSm" onClick={() => openTicketingUi(ticketState.resp?.ticket?.json?.ticket?.id || ticketState.resp?.ticket?.id)}>View</button>
               </div>
             )}
-            {ticketState?.status === 'error' && (
-              <span className="muted">
-                Ticket failed: {ticketState.error}{' '}
-                <button
-                  className="btnSm"
-                  type="button"
-                  onClick={() => onCreateTicket(msg.id, ticketState?.draft)}
-                >
-                  Retry
-                </button>
-              </span>
-            )}
-
             {!ticketState && !!persistedTicket && (
               <div className="ticketCreated">
-                <span className="muted">
-                  Ticket created{persistedTicket?.title ? `: ${persistedTicket.title}` : ''}
-                  {persistedTicket?.id ? ` (#${persistedTicket.id})` : ''}
-                </span>
-                <button className="btnSm" type="button" onClick={() => openTicketingUi(persistedTicket?.id || null)}>
-                  View ticket
-                </button>
+                <span className="muted">Ticket created</span>
+                <button className="btnSm" onClick={() => openTicketingUi(persistedTicket.id)}>View</button>
               </div>
             )}
-
             {!ticketState && !persistedTicket && !ticketOpen && (
-              <>
-                <span className="muted">Create a ticket?</span>
-                <button className="btnSm" type="button" onClick={() => setTicketOpen(true)}>
-                  Yes
-                </button>
-              </>
+              <button className="btnSm ghost" onClick={() => setTicketOpen(true)}>Create Ticket</button>
             )}
-
-            {!ticketState && ticketOpen && (
-              <form
-                className="ticketForm"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  onCreateTicket(msg.id, { details: ticketDetails })
-                }}
-              >
+            {ticketOpen && !ticketState && (
+              <div className="ticketForm">
                 <textarea
                   className="ticketText"
+                  placeholder="Extra info for the ticket..."
                   value={ticketDetails}
-                  onChange={(e) => setTicketDetails(e.target.value)}
-                  placeholder="Optional: add extra details for the agent (device, urgency, steps tried, error messages)…"
-                  rows={4}
+                  onChange={e => setTicketDetails(e.target.value)}
                 />
-                <div className="ticketActions">
-                  <button className="btnSm" type="submit">
-                    Create
-                  </button>
-                  <button
-                    className="btnSm ghost"
-                    type="button"
-                    onClick={() => {
-                      setTicketOpen(false)
-                      setTicketDetails('')
-                    }}
-                  >
-                    Cancel
-                  </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="btnSm" onClick={() => { onCreateTicket(msg.id, { details: ticketDetails }); setTicketOpen(false); }}>Submit</button>
+                  <button className="btnSm ghost" onClick={() => setTicketOpen(false)}>Cancel</button>
                 </div>
-                <div className="muted">Title & description will be generated by the agent.</div>
-              </form>
+              </div>
             )}
           </div>
         )}
 
         {canFeedback && !feedbackLocked && (
           <div className="msgActions">
-            <button
-              className={currentFeedback === 'up' ? 'iconBtn active' : 'iconBtn'}
-              onClick={() => {
-                onFeedback(msg.id, 'up')
-              }}
-              title="Thumbs up"
-              type="button"
-            >
-              👍
-            </button>
-            <button
-              className={currentFeedback === 'down' ? 'iconBtn active' : 'iconBtn'}
-              onClick={() => {
-                onFeedback(msg.id, 'down')
-              }}
-              title="Thumbs down"
-              type="button"
-            >
-              👎
-            </button>
+            <button className="iconBtn" onClick={() => onFeedback(msg.id, 'up')} title="Thumbs up">👍</button>
+            <button className="iconBtn" onClick={() => onFeedback(msg.id, 'down')} title="Thumbs down">👎</button>
           </div>
         )}
 
         {canFeedback && feedbackLocked && (
           <div className="msgActions">
-            <span className="muted">Rated {currentFeedback === 'up' ? '👍' : currentFeedback === 'down' ? '👎' : ''}</span>
+            <span className="muted">Rated {currentFeedback === 'up' ? '👍' : '👎'}</span>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function Dashboard({ stats }) {
+  if (!stats) return <div className="dashboard"><div className="muted">Loading analytics...</div></div>
+
+  const {
+    summary,
+    top_questions,
+    top_users,
+    top_topics,
+    top_sources,
+    daily_questions,
+    recommendations,
+  } = stats
+
+  const { line, area } = buildLinePath(daily_questions)
+  const pieSegments = buildPieSegments(top_topics)
+  const maxSourceCount = Math.max(...(top_sources?.map((s) => s.count) || [1]))
+  const maxUserCount = Math.max(...(top_users?.map((u) => u.question_count) || [1]))
+  const feedbackTotal = (summary.feedback_up || 0) + (summary.feedback_down || 0)
+  const feedbackUpPct = feedbackTotal ? (summary.feedback_up / feedbackTotal) * 100 : 0
+
+  return (
+    <div className="dashboard">
+      <div className="statsGrid">
+        <div className="statCard">
+          <div className="statLabel">Total Questions</div>
+          <div className="statValue">{summary.total_questions}</div>
+          <div className="statSub">Trend {formatPercent(summary.question_trend_pct)}</div>
+        </div>
+        <div className="statCard">
+          <div className="statLabel">Total Messages</div>
+          <div className="statValue">{summary.total_messages}</div>
+        </div>
+        <div className="statCard">
+          <div className="statLabel">Active Users</div>
+          <div className="statValue">{summary.total_users}</div>
+          <div className="statSub">Avg {summary.avg_questions_per_user.toFixed(1)} questions/user</div>
+        </div>
+        <div className="statCard">
+          <div className="statLabel">Assistant Error Rate</div>
+          <div className="statValue">{formatPercent(summary.assistant_error_rate * 100)}</div>
+        </div>
+        <div className="statCard">
+          <div className="statLabel">Feedback (up/down)</div>
+          <div className="statValue">{summary.feedback_up} / {summary.feedback_down}</div>
+        </div>
+      </div>
+
+      <div className="dashRow">
+        <div className="dashCard wide">
+          <div className="cardTitle">Daily Questions (Line Chart)</div>
+          <div className="lineWrap">
+            <svg className="lineChart" viewBox="0 0 320 120" role="img">
+              <path className="lineArea" d={area} />
+              <path className="linePath" d={line} />
+            </svg>
+            {(!daily_questions || daily_questions.length === 0) && <div className="muted">No data yet</div>}
+          </div>
+        </div>
+
+        <div className="dashCard">
+          <div className="cardTitle">Topic Distribution (Pie)</div>
+          <div className="pieWrap">
+            <svg className="pie" viewBox="0 0 42 42" aria-hidden="true">
+              <circle className="pieBg" cx="21" cy="21" r="15.915" />
+              {pieSegments.map((seg) => (
+                <circle
+                  key={seg.label}
+                  className="pieSeg"
+                  cx="21"
+                  cy="21"
+                  r="15.915"
+                  stroke={seg.color}
+                  strokeDasharray={seg.dashArray}
+                  strokeDashoffset={seg.dashOffset}
+                />
+              ))}
+            </svg>
+            <div className="pieLegend">
+              {pieSegments.map((seg) => (
+                <div key={seg.label} className="legendItem">
+                  <span className="legendSwatch" style={{ background: seg.color }} />
+                  <span>{seg.label} ({seg.count})</span>
+                </div>
+              ))}
+              {(!top_topics || top_topics.length === 0) && <div className="muted">No data yet</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="dashRow">
+        <div className="dashCard">
+          <div className="cardTitle">Top Questions</div>
+          <div className="list">
+            {top_questions?.map((q) => (
+              <div key={q.question} className="listItem">
+                <div className="itemMain">
+                  <div className="itemLabel">{q.question}</div>
+                  <div className="itemSub">Asked {q.count} times</div>
+                </div>
+                <div className="itemValue">{q.count}</div>
+              </div>
+            ))}
+            {(!top_questions || top_questions.length === 0) && <div className="muted">No data yet</div>}
+          </div>
+        </div>
+
+        <div className="dashCard">
+          <div className="cardTitle">Frequent Users</div>
+          <div className="list">
+            {top_users?.map((u) => (
+              <div key={u.client_id} className="listItem">
+                <div className="itemMain">
+                  <div className="itemLabel">{u.display_name || u.client_id}</div>
+                  <div className="itemSub">{u.question_count} questions</div>
+                </div>
+                <div className="itemValue">{u.question_count}</div>
+              </div>
+            ))}
+            {(!top_users || top_users.length === 0) && <div className="muted">No data yet</div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="dashRow">
+        <div className="dashCard">
+          <div className="cardTitle">Top Sources (Bar)</div>
+          <div className="barChart">
+            {top_sources?.map((s) => (
+              <div key={s.source} className="barRow">
+                <div className="barLabelWrap">
+                  <span>{s.source}</span>
+                  <span>{s.count}</span>
+                </div>
+                <div className="barBg">
+                  <div className="barFill" style={{ width: `${(s.count / maxSourceCount) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+            {(!top_sources || top_sources.length === 0) && <div className="muted">No data yet</div>}
+          </div>
+        </div>
+
+        <div className="dashCard predictionCard">
+          <div className="cardTitle">Insights and Recommendations</div>
+          <div className="list">
+            {recommendations?.map((r) => (
+              <div key={r.title} className="recItem">
+                <div className="recHeader">
+                  <span className={`pill ${r.priority === 'high' ? 'pillError' : ''}`} style={{ fontSize: '10px', textTransform: 'uppercase' }}>
+                    {r.priority}
+                  </span>
+                  <strong>{r.title}</strong>
+                </div>
+                <div className="predictionText">{r.detail}</div>
+              </div>
+            ))}
+            {(!recommendations || recommendations.length === 0) && (
+              <div className="predictionText">
+                The system is stable. Keep monitoring usage and add targeted documentation as new themes appear.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="dashRow">
+        <div className="dashCard">
+          <div className="cardTitle">Top Users (Bar)</div>
+          <div className="barChart">
+            {top_users?.map((u) => (
+              <div key={u.client_id} className="barRow">
+                <div className="barLabelWrap">
+                  <span>{u.display_name || u.client_id}</span>
+                  <span>{u.question_count}</span>
+                </div>
+                <div className="barBg">
+                  <div className="barFill" style={{ width: `${(u.question_count / maxUserCount) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+            {(!top_users || top_users.length === 0) && <div className="muted">No data yet</div>}
+          </div>
+        </div>
+
+        <div className="dashCard">
+          <div className="cardTitle">Feedback Split</div>
+          <div className="feedbackBar">
+            <div className="feedbackUp" style={{ width: `${feedbackUpPct}%` }} />
+            <div className="feedbackDown" style={{ width: `${100 - feedbackUpPct}%` }} />
+          </div>
+          <div className="feedbackLabels">
+            <span>Up {summary.feedback_up}</span>
+            <span>Down {summary.feedback_down}</span>
+          </div>
+          {feedbackTotal === 0 && <div className="muted">No feedback yet</div>}
+        </div>
       </div>
     </div>
   )
@@ -235,17 +405,18 @@ export default function App() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
+  const [view, setView] = useState('chat')
+
+  const [analytics, setAnalytics] = useState(null)
+  const [analyticsDays, setAnalyticsDays] = useState(30)
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false)
+  const [analyticsError, setAnalyticsError] = useState(null)
 
   const [ticketByMessageId, setTicketByMessageId] = useState({})
-
   const [profile, setProfile] = useState(null)
-  const [editingName, setEditingName] = useState(false)
-  const [nameDraft, setNameDraft] = useState('')
-
-  const [renamingId, setRenamingId] = useState(null)
-  const [renameDraft, setRenameDraft] = useState('')
 
   const listRef = useRef(null)
+
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConversationId) || null,
     [conversations, activeConversationId]
@@ -253,20 +424,12 @@ export default function App() {
 
   async function refreshConversations({ autoSelect = true } = {}) {
     setLoadingConversations(true)
-    setError(null)
     try {
       const items = await apiFetch('/chat/conversations')
       setConversations(items)
-
-      if (autoSelect) {
-        const nextId = activeConversationId || items?.[0]?.id || null
-        if (nextId) setActiveConversationId(nextId)
-      }
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoadingConversations(false)
-    }
+      if (autoSelect && items.length > 0) setActiveConversationId(activeConversationId || items[0].id)
+    } catch (e) { setError(e.message) }
+    finally { setLoadingConversations(false) }
   }
 
   async function refreshMessages(conversationId) {
@@ -276,236 +439,128 @@ export default function App() {
     try {
       const items = await apiFetch(`/chat/conversations/${conversationId}/messages`)
       setMessages(items)
-      queueMicrotask(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
-      })
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoadingMessages(false)
-    }
+      queueMicrotask(() => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight })
+    } catch (e) { setError(e.message) }
+    finally { setLoadingMessages(false) }
   }
 
-  async function createConversation() {
-    setError(null)
+  async function refreshAnalytics() {
+    setLoadingAnalytics(true)
+    setAnalyticsError(null)
     try {
-      const created = await apiFetch('/chat/conversations', {
-        method: 'POST',
-        body: JSON.stringify({ title: null }),
-      })
+      const data = await apiFetch(`/chat/analytics?days=${analyticsDays}&limit=10`)
+      setAnalytics(data)
+    } catch (e) {
+      console.error('Analytics failed', e)
+      setAnalyticsError(e.message)
+    }
+    finally { setLoadingAnalytics(false) }
+  }
 
+  useEffect(() => {
+    if (view === 'dashboard') refreshAnalytics()
+  }, [view, analyticsDays])
+
+  async function createConversation() {
+    try {
+      const created = await apiFetch('/chat/conversations', { method: 'POST', body: JSON.stringify({ title: null }) })
       setConversations((prev) => [created, ...prev])
       setActiveConversationId(created.id)
       setMessages([])
-      setDraft('')
-      setRenamingId(null)
-      setRenameDraft('')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  async function createTicketForMessage(messageId, draft) {
-    setError(null)
-    setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'creating', draft: draft || null } }))
-    try {
-      const payload = draft && typeof draft === 'object' ? draft : {}
-      const resp = await apiFetch(`/chat/messages/${messageId}/ticket`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      })
-      setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'created', resp } }))
-
-      const ticketId = resp?.ticket?.json?.ticket?.id
-      if (typeof ticketId === 'string' && ticketId.trim()) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? { ...m, ticket: { id: ticketId.trim(), title: resp?.title || '', description: resp?.description || '' } }
-              : m
-          )
-        )
-      }
-    } catch (e) {
-      setTicketByMessageId((prev) => ({ ...prev, [messageId]: { status: 'error', error: e.message, draft: draft || prev?.[messageId]?.draft || null } }))
-    }
+      setView('chat')
+      setError(null)
+    } catch (e) { setError(e.message) }
   }
 
   async function send() {
     const text = draft.trim()
     if (!text || sending) return
 
-    let conversationId = activeConversationId
-    if (!conversationId) {
-      const created = await apiFetch('/chat/conversations', {
-        method: 'POST',
-        body: JSON.stringify({ title: null }),
-      })
-      setConversations((prev) => [created, ...prev])
-      setActiveConversationId(created.id)
-      setMessages([])
-      conversationId = created.id
-    }
-
     setSending(true)
     setError(null)
 
-    const tempUser = {
-      id: `temp-u-${Date.now()}`,
-      conversation_id: conversationId,
-      role: 'user',
-      content: text,
-      created_at: new Date().toISOString(),
-    }
-    const tempAssistant = {
-      id: `temp-a-${Date.now()}`,
-      conversation_id: conversationId,
-      role: 'assistant',
-      content: '…',
-      pending: true,
-      created_at: new Date().toISOString(),
-    }
+    // Track matching pairs to remove them once real data arrives
+    const tempId = 'temp-' + Date.now()
+    const tempUserMsg = { id: 'u-' + tempId, role: 'user', content: text }
+    const tempAssistMsg = { id: 'a-' + tempId, role: 'assistant', content: '…', pending: true }
 
-    setMessages((prev) => [...prev, tempUser, tempAssistant])
+    setMessages(prev => [...prev, tempUserMsg, tempAssistMsg])
     setDraft('')
-    queueMicrotask(() => {
-      if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
-    })
+    queueMicrotask(() => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight })
 
+    let conversationId = activeConversationId
     try {
+      if (!conversationId) {
+        const created = await apiFetch('/chat/conversations', { method: 'POST', body: JSON.stringify({ title: null }) })
+        setConversations(prev => [created, ...prev])
+        setActiveConversationId(created.id)
+        conversationId = created.id
+      }
+
       const resp = await apiFetch(`/chat/conversations/${conversationId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({ content: text })
       })
 
-      setMessages((prev) => {
-        const trimmed = prev.filter((m) => !String(m.id).startsWith('temp-'))
-        return [...trimmed, resp.user_message, resp.assistant_message]
+      setMessages(prev => {
+        const filtered = prev.filter(m => !String(m.id).includes(tempId))
+        return [...filtered, resp.user_message, resp.assistant_message]
       })
+
       await refreshConversations({ autoSelect: false })
-      queueMicrotask(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
-      })
+      queueMicrotask(() => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight })
     } catch (e) {
-      setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')))
-      setError(e.message)
+      console.error('Send failed', e)
+      setError(`Failed to send: ${e.message}`)
+      // Keep user message but remove typing dots
+      setMessages(prev => prev.filter(m => m.id !== tempAssistMsg.id))
     } finally {
       setSending(false)
     }
   }
 
-  async function renameConversation(conversationId, title) {
-    setError(null)
-    try {
-      const updated = await apiFetch(`/chat/conversations/${conversationId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ title }),
-      })
-      setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  async function deleteConversation(conversationId) {
-    if (!conversationId) return
-    setError(null)
-    try {
-      await apiFetch(`/chat/conversations/${conversationId}`, { method: 'DELETE' })
-      setConversations((prev) => {
-        const remaining = prev.filter((c) => c.id !== conversationId)
-
-        if (activeConversationId === conversationId) {
-          const next = remaining[0]?.id || null
-          setActiveConversationId(next)
-          setMessages([])
-        }
-
-        if (remaining.length === 0) {
-          // Recreate a chat automatically so the UI stays usable.
-          queueMicrotask(() => createConversation())
-        }
-
-        return remaining
-      })
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setRenamingId(null)
-      setRenameDraft('')
-    }
-  }
-
   async function setFeedback(messageId, feedback) {
-    setError(null)
     try {
-      const updated = await apiFetch(`/chat/messages/${messageId}/feedback`, {
-        method: 'POST',
-        body: JSON.stringify({ feedback }),
-      })
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, feedback: updated.feedback, feedback_comment: updated.feedback_comment } : m))
-      )
+      const updated = await apiFetch(`/chat/messages/${messageId}/feedback`, { method: 'POST', body: JSON.stringify({ feedback }) })
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, feedback: updated.feedback } : m))
+    } catch (e) { setError(e.message) }
+  }
+
+  async function createTicketForMessage(messageId, payload) {
+    setTicketByMessageId(prev => ({ ...prev, [messageId]: { status: 'creating' } }))
+    try {
+      const resp = await apiFetch(`/chat/messages/${messageId}/ticket`, { method: 'POST', body: JSON.stringify(payload) })
+      setTicketByMessageId(prev => ({ ...prev, [messageId]: { status: 'created', resp } }))
     } catch (e) {
-      setError(e.message)
+      setTicketByMessageId(prev => ({ ...prev, [messageId]: { status: 'error', error: e.message } }))
     }
   }
 
   useEffect(() => {
-    ;(async () => {
+    (async () => {
       setLoadingConversations(true)
-      setError(null)
       try {
         const p = await apiFetch('/chat/profile')
         setProfile(p)
-        setNameDraft(p.display_name || '')
-
         const items = await apiFetch('/chat/conversations')
-        if (!items || items.length === 0) {
-          const created = await apiFetch('/chat/conversations', {
-            method: 'POST',
-            body: JSON.stringify({ title: null }),
-          })
-          setConversations([created])
-          setActiveConversationId(created.id)
-          return
+        if (items.length === 0) {
+          await createConversation()
+        } else {
+          setConversations(items)
+          setActiveConversationId(items[0].id)
         }
-        setConversations(items)
-        setActiveConversationId(items[0].id)
       } catch (e) {
         setError(e.message)
       } finally {
         setLoadingConversations(false)
       }
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function saveDisplayName(nextName) {
-    setError(null)
-    try {
-      const updated = await apiFetch('/chat/profile', {
-        method: 'PUT',
-        body: JSON.stringify({ display_name: nextName?.trim() || null }),
-      })
-      setProfile(updated)
-      setNameDraft(updated.display_name || '')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  useEffect(() => {
-    refreshMessages(activeConversationId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversationId])
+  useEffect(() => { if (activeConversationId) refreshMessages(activeConversationId) }, [activeConversationId])
 
   return (
     <div className="bg">
-      <div className="blob b1" />
-      <div className="blob b2" />
-      <div className="blob b3" />
-
       <div className="shell">
         <aside className="sidebar glass">
           <div className="sideTop">
@@ -514,184 +569,105 @@ export default function App() {
               <div className="brandText">
                 <div className="brandTitle">Intranet Chat</div>
                 <div className="brandSub">
-                  {editingName ? (
-                    <input
-                      className="nameInput"
-                      value={nameDraft}
-                      placeholder="Your name"
-                      autoFocus
-                      onChange={(e) => setNameDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          saveDisplayName(nameDraft)
-                          setEditingName(false)
-                        }
-                        if (e.key === 'Escape') {
-                          e.preventDefault()
-                          setEditingName(false)
-                          setNameDraft(profile?.display_name || '')
-                        }
-                      }}
-                      onBlur={() => {
-                        saveDisplayName(nameDraft)
-                        setEditingName(false)
-                      }}
-                    />
-                  ) : (
-                    <button
-                      className="nameBtn"
-                      type="button"
-                      title="Edit display name"
-                      onClick={() => setEditingName(true)}
-                    >
-                      {profile?.display_name ? `Hi, ${profile.display_name}` : 'RAG over internal docs'}
-                    </button>
-                  )}
+                  {profile?.display_name ? `Hi, ${profile.display_name}` : 'Intranet Assistant'}
                 </div>
               </div>
             </div>
-            <button className="btn" onClick={createConversation} disabled={loadingConversations}>
-              + New chat
-            </button>
+            <button className="btn primary" onClick={createConversation}>+ New chat</button>
+            <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <button className={view === 'chat' ? 'navBtn active' : 'navBtn'} onClick={() => setView('chat')}>💬 Chat</button>
+              <button className={view === 'dashboard' ? 'navBtn active' : 'navBtn'} onClick={() => setView('dashboard')}>📊 Dashboard</button>
+            </div>
           </div>
-
           <div className="sideList">
-            {loadingConversations && <div className="muted">Loading…</div>}
-            {!loadingConversations && conversations.length === 0 && (
-              <div className="muted">No conversations yet.</div>
-            )}
-            {conversations.map((c) => {
-              const active = c.id === activeConversationId
-              const isRenaming = renamingId === c.id
-              return (
-                <div key={c.id} className={active ? 'convItemRow active' : 'convItemRow'}>
-                  {isRenaming ? (
-                    <div className="convMain" title="Rename conversation">
-                      <input
-                        className="renameInput"
-                        value={renameDraft}
-                        autoFocus
-                        onChange={(e) => setRenameDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            renameConversation(c.id, renameDraft.trim() || null)
-                            setRenamingId(null)
-                            setRenameDraft('')
-                          }
-                          if (e.key === 'Escape') {
-                            e.preventDefault()
-                            setRenamingId(null)
-                            setRenameDraft('')
-                          }
-                        }}
-                        onBlur={() => {
-                          renameConversation(c.id, renameDraft.trim() || null)
-                          setRenamingId(null)
-                          setRenameDraft('')
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      className="convMain"
-                      onClick={() => setActiveConversationId(c.id)}
-                      title={formatTitle(c.title)}
-                      type="button"
-                    >
-                      <div className="convTitle">{formatTitle(c.title)}</div>
-                      <div className="convMeta">Updated {new Date(c.updated_at).toLocaleString()}</div>
-                    </button>
-                  )}
-
-                  <div className="convActions">
-                    <button
-                      className="iconBtn"
-                      title="Rename"
-                      type="button"
-                      onClick={() => {
-                        setRenamingId(c.id)
-                        setRenameDraft(c.title || '')
-                      }}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      className="iconBtn danger"
-                      title="Delete"
-                      type="button"
-                      onClick={() => deleteConversation(c.id)}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
+            {conversations.map(c => (
+              <div
+                key={c.id}
+                className={c.id === activeConversationId ? 'convItemRow active' : 'convItemRow'}
+                onClick={() => { setActiveConversationId(c.id); setView('chat'); }}
+              >
+                <div className="convTitle">{formatTitle(c.title)}</div>
+              </div>
+            ))}
           </div>
         </aside>
 
         <main className="main glass">
           <header className="topbar">
             <div>
-              <div className="topTitle">{activeConversation ? formatTitle(activeConversation.title) : 'Chat'}</div>
-              <div className="topSub">Ask questions about HR / IT / Finance documents</div>
+              <div className="topTitle">
+                {view === 'dashboard'
+                  ? 'Analytics Dashboard'
+                  : (activeConversation ? formatTitle(activeConversation.title) : 'New Chat')}
+              </div>
+              <div className="topSub">
+                {view === 'dashboard' ? `Last ${analyticsDays} days` : 'How can I help you today?'}
+              </div>
             </div>
             <div className="rightInfo">
-              <a className="link" href="/" onClick={(e) => e.preventDefault()}>
-                API: {API_BASE || 'proxy'}
-              </a>
+              {view === 'dashboard' && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '4px 8px' }}
+                    value={analyticsDays}
+                    onChange={(e) => setAnalyticsDays(Number(e.target.value))}
+                  >
+                    <option value={7}>7 Days</option>
+                    <option value={30}>30 Days</option>
+                    <option value={90}>90 Days</option>
+                  </select>
+                  <button className="btnSm" onClick={refreshAnalytics}>Refresh</button>
+                </div>
+              )}
             </div>
           </header>
 
-          <section className="chat" ref={listRef}>
-            {loadingMessages && <div className="muted">Loading messages…</div>}
-            {!loadingMessages && messages.length === 0 && (
-              <div className="empty">
-                <div className="emptyTitle">Start a conversation</div>
-                <div className="emptySub">Try: “How many casual leaves do employees get?”</div>
-              </div>
-            )}
-            {messages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                msg={m}
-                onFeedback={setFeedback}
-                onCreateTicket={createTicketForMessage}
-                ticketState={ticketByMessageId[m.id]}
-              />
-            ))}
-          </section>
-
-          <footer className="composerWrap">
-            {error && <div className="error">{error}</div>}
-            <div className="composer">
-              <textarea
-                className="input"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Message Intranet Chat…"
-                rows={1}
-                style={{ height: 'auto' }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    send()
-                  }
-                }}
-                disabled={sending}
-                onInput={(e) => {
-                  e.currentTarget.style.height = 'auto'
-                  e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 160)}px`
-                }}
-              />
-              <button className="btn primary" onClick={send} disabled={!draft.trim() || sending}>
-                {sending ? 'Sending…' : 'Send'}
-              </button>
-            </div>
-            <div className="hint">Enter to send • Shift+Enter for new line</div>
-          </footer>
+          {view === 'dashboard' ? (
+            <section className="dashboardWrap">
+              {loadingAnalytics && <div className="muted">Loading analytics...</div>}
+              {analyticsError && <div className="error">{analyticsError}</div>}
+              {!loadingAnalytics && !analyticsError && <Dashboard stats={analytics} />}
+            </section>
+          ) : (
+            <>
+              <section className="chat" ref={listRef}>
+                {error && <div className="error">{error}</div>}
+                {messages.length === 0 && !loadingMessages && (
+                  <div className="muted" style={{ textAlign: 'center', marginTop: '40px' }}>
+                    Welcome to the Intranet Assistant. Ask queries about internal documents.
+                  </div>
+                )}
+                {messages.map(m => (
+                  <MessageBubble
+                    key={m.id}
+                    msg={m}
+                    onFeedback={setFeedback}
+                    onCreateTicket={createTicketForMessage}
+                    ticketState={ticketByMessageId[m.id]}
+                  />
+                ))}
+              </section>
+              <footer className="composerWrap">
+                <div className="composer">
+                  <textarea
+                    className="input"
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    placeholder="Ask a question..."
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+                    disabled={sending}
+                  />
+                  <button
+                    className="btn primary"
+                    onClick={send}
+                    disabled={!draft.trim() || sending}
+                  >
+                    {sending ? '...' : 'Send'}
+                  </button>
+                </div>
+              </footer>
+            </>
+          )}
         </main>
       </div>
     </div>
