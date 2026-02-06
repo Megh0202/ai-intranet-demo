@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from backend.service import RetrievedChunk, answer_query
@@ -74,7 +75,7 @@ def health() -> dict:
 
 
 @app.post("/query", response_model=QueryResponse)
-def query(req: QueryRequest) -> QueryResponse:
+async def query(req: QueryRequest) -> QueryResponse:
     s = get_settings()
 
     # Helpful message when ingestion hasn't been run yet.
@@ -87,7 +88,12 @@ def query(req: QueryRequest) -> QueryResponse:
             ),
         )
 
-    payload = answer_query(req.query, settings=s, return_chunks=req.return_chunks)
+    payload = await run_in_threadpool(
+        answer_query,
+        req.query,
+        settings=s,
+        return_chunks=req.return_chunks,
+    )
 
     chunks = None
     if req.return_chunks:

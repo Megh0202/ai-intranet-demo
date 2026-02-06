@@ -36,8 +36,7 @@ def _serialize_chunks(results, *, max_chars: int = 600) -> list[RetrievedChunk]:
 def _confidence_from_chroma_scores(results) -> float:
     """Convert Chroma distance scores (lower is better) to a [0,1] confidence.
 
-    LangChain's Chroma `similarity_search_with_score` typically returns a distance-like score.
-    We map distance to confidence via exp(-distance).
+    We map distance to confidence via 1 / (1 + distance) to keep a usable range.
     """
 
     if not results:
@@ -48,8 +47,15 @@ def _confidence_from_chroma_scores(results) -> float:
         return 0.0
 
     best = min(scores)
-    conf = math.exp(-best)
-    return max(0.0, min(float(conf), 1.0))
+    avg = sum(scores) / len(scores)
+    # Base similarity from the best match.
+    sim = 1.0 / (1.0 + max(0.0, best))
+    # Separation factor: if average is much worse than best, boost confidence.
+    gap = max(0.0, avg - best)
+    sep = 1.0 / (1.0 + gap)
+    conf = (0.75 * sim) + (0.25 * sep)
+    conf = max(0.0, min(float(conf), 1.0))
+    return conf
 
 
 def answer_query(
@@ -72,13 +78,19 @@ def answer_query(
             payload["chunks"] = []
         return payload
 
-    response = generate_answer(query, results, settings=s, compute_confidence=False)
+    response = generate_answer(query, results, settings=s, compute_confidence=True)
     chroma_confidence = _confidence_from_chroma_scores(results)
+    llm_confidence = float(response.get("confidence") or 0.0)
+    # Blend model self-eval with retrieval similarity when LLM score is available.
+    if llm_confidence > 0.0:
+        combined_confidence = (0.6 * llm_confidence) + (0.4 * chroma_confidence)
+    else:
+        combined_confidence = chroma_confidence
 
     payload = {
         "department": department,
         "answer": response["answer"],
-        "confidence": chroma_confidence,
+        "confidence": max(0.0, min(float(combined_confidence), 1.0)),
         "sources": response["sources"],
     }
 

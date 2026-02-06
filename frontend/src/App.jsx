@@ -133,9 +133,12 @@ function MessageBubble({ msg, onFeedback, onCreateTicket, ticketState }) {
           )}
         </div>
 
-        {!isPending && !isUser && msg.department && (
+        {!isPending && !isUser && (msg.department || msg.error || msg.confidence !== null && msg.confidence !== undefined) && (
           <div className="meta">
-            <span className="pill">{msg.department}</span>
+            {msg.department && <span className="pill">{msg.department}</span>}
+            {typeof msg.confidence === 'number' && !Number.isNaN(msg.confidence) && (
+              <span className="pill">Confidence {Math.round(msg.confidence * 1000) / 10}%</span>
+            )}
             {msg.error && <span className="pill pillError">Error</span>}
           </div>
         )}
@@ -204,6 +207,7 @@ function Dashboard({ stats }) {
     top_topics,
     top_sources,
     daily_questions,
+    confidence_points,
     recommendations,
   } = stats
 
@@ -286,6 +290,32 @@ function Dashboard({ stats }) {
 
       <div className="dashRow">
         <div className="dashCard">
+          <div className="cardTitle">Confidence by Response (Scatter)</div>
+          <div className="scatterWrap">
+            <svg className="scatterChart" viewBox="0 0 320 160" role="img">
+              <line className="scatterAxis" x1="24" y1="12" x2="24" y2="140" />
+              <line className="scatterAxis" x1="24" y1="140" x2="304" y2="140" />
+              {(confidence_points || []).map((p, i) => {
+                const x = 24 + (i / Math.max((confidence_points.length - 1), 1)) * 280
+                const y = 140 - (Math.max(0, Math.min(1, p.confidence || 0)) * 120)
+                const pct = Math.round((p.confidence || 0) * 1000) / 10
+                return (
+                  <g key={`${p.response_id || i}-${i}`}>
+                    <circle className="scatterDot" cx={x} cy={y} r={4}>
+                      <title>{pct}%</title>
+                    </circle>
+                    <circle className="scatterHit" cx={x} cy={y} r={8}>
+                      <title>{pct}%</title>
+                    </circle>
+                  </g>
+                )
+              })}
+            </svg>
+            {(!confidence_points || confidence_points.length === 0) && <div className="muted">No confidence data yet</div>}
+          </div>
+        </div>
+
+        <div className="dashCard">
           <div className="cardTitle">Top Questions</div>
           <div className="list">
             {top_questions?.map((q) => (
@@ -300,7 +330,9 @@ function Dashboard({ stats }) {
             {(!top_questions || top_questions.length === 0) && <div className="muted">No data yet</div>}
           </div>
         </div>
+      </div>
 
+      <div className="dashRow">
         <div className="dashCard">
           <div className="cardTitle">Frequent Users</div>
           <div className="list">
@@ -316,9 +348,7 @@ function Dashboard({ stats }) {
             {(!top_users || top_users.length === 0) && <div className="muted">No data yet</div>}
           </div>
         </div>
-      </div>
-
-      <div className="dashRow">
+      
         <div className="dashCard">
           <div className="cardTitle">Top Sources (Bar)</div>
           <div className="barChart">
@@ -334,28 +364,6 @@ function Dashboard({ stats }) {
               </div>
             ))}
             {(!top_sources || top_sources.length === 0) && <div className="muted">No data yet</div>}
-          </div>
-        </div>
-
-        <div className="dashCard predictionCard">
-          <div className="cardTitle">Insights and Recommendations</div>
-          <div className="list">
-            {recommendations?.map((r) => (
-              <div key={r.title} className="recItem">
-                <div className="recHeader">
-                  <span className={`pill ${r.priority === 'high' ? 'pillError' : ''}`} style={{ fontSize: '10px', textTransform: 'uppercase' }}>
-                    {r.priority}
-                  </span>
-                  <strong>{r.title}</strong>
-                </div>
-                <div className="predictionText">{r.detail}</div>
-              </div>
-            ))}
-            {(!recommendations || recommendations.length === 0) && (
-              <div className="predictionText">
-                The system is stable. Keep monitoring usage and add targeted documentation as new themes appear.
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -390,6 +398,30 @@ function Dashboard({ stats }) {
             <span>Down {summary.feedback_down}</span>
           </div>
           {feedbackTotal === 0 && <div className="muted">No feedback yet</div>}
+        </div>
+      </div>
+
+      <div className="dashRow">
+        <div className="dashCard predictionCard">
+          <div className="cardTitle">Insights and Recommendations</div>
+          <div className="list">
+            {recommendations?.map((r) => (
+              <div key={r.title} className="recItem">
+                <div className="recHeader">
+                  <span className={`pill ${r.priority === 'high' ? 'pillError' : ''}`} style={{ fontSize: '10px', textTransform: 'uppercase' }}>
+                    {r.priority}
+                  </span>
+                  <strong>{r.title}</strong>
+                </div>
+                <div className="predictionText">{r.detail}</div>
+              </div>
+            ))}
+            {(!recommendations || recommendations.length === 0) && (
+              <div className="predictionText">
+                The system is stable. Keep monitoring usage and add targeted documentation as new themes appear.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

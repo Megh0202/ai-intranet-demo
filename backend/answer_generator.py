@@ -59,6 +59,20 @@ def generate_answer(
             "sources": list(sources),
         }
 
+    # If we do have internal content but the model still says insufficient, provide a grounded summary.
+    if answer.upper().startswith("INSUFFICIENT_INFORMATION") and retrieved_docs:
+        excerpts = []
+        for doc, _ in retrieved_docs[:2]:
+            chunk = (doc.page_content or "").strip()
+            if chunk:
+                excerpts.append(chunk[:400].strip())
+        if excerpts:
+            summary = " ".join(excerpts)
+            answer = (
+                "Based on the internal documents, here is the relevant information:\n\n"
+                + summary
+            )
+
     confidence = 0.0
     if compute_confidence:
         # 2. Self-evaluation for confidence
@@ -76,10 +90,11 @@ def generate_answer(
             Return ONLY the number.
             """
         try:
-            confidence = float(llm.invoke(confidence_prompt).strip())
+            raw = llm.invoke(confidence_prompt).strip()
+            confidence = float(raw)
             confidence = max(0.0, min(confidence, 1.0))
-        except:
-            confidence = 0.50
+        except Exception:
+            confidence = 0.0
 
     return {
         "answer": answer,

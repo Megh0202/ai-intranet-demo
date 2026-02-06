@@ -6,6 +6,19 @@ from backend.settings import Settings, get_settings
 def classify_intent(query: str, *, settings: Settings | None = None) -> str:
     s = settings or get_settings()
     llm = get_llm(s)
+    lowered = query.lower()
+    # Keyword-first routing to reduce LLM misroutes for common finance topics.
+    if any(k in lowered for k in ("audit", "audit policy", "audit process", "audit findings", "internal audit", "risk score", "risk rating")):
+        if any(k in lowered for k in ("ticket", "security", "access", "laptop", "system")):
+            pass
+        else:
+            return "Finance"
+    if any(k in lowered for k in ("invoice", "ap", "ar", "general ledger", "gl", "treasury", "reimbursement", "expense", "finance", "payroll", "tax", "risk score", "risk rating")):
+        return "Finance"
+    if any(k in lowered for k in ("vpn", "laptop", "wifi", "network", "password", "access", "security", "it", "ticket", "system")):
+        return "IT"
+    if any(k in lowered for k in ("leave", "holiday", "attendance", "hr", "benefit", "code of conduct")):
+        return "HR"
     prompt = f"""
 You are an enterprise AI router.
 

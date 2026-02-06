@@ -56,6 +56,7 @@ async def compute_analytics(*, days: int = 30, limit: int = 10) -> dict[str, Any
     source_counts: Counter[str] = Counter()
 
     feedback_counts: Counter[str] = Counter()
+    confidence_points: list[dict[str, Any]] = []
     error_count = 0
     assistant_count = 0
 
@@ -101,6 +102,14 @@ async def compute_analytics(*, days: int = 30, limit: int = 10) -> dict[str, Any
         assistant_count += 1
         if doc.get("error"):
             error_count += 1
+        else:
+            conf = doc.get("confidence")
+            if isinstance(conf, (int, float)):
+                confidence_points.append({
+                    "index": len(confidence_points) + 1,
+                    "confidence": float(conf),
+                    "response_id": str(doc.get("_id")) if doc.get("_id") else None,
+                })
 
         feedback = doc.get("feedback")
         if feedback in ("up", "down"):
@@ -253,5 +262,6 @@ async def compute_analytics(*, days: int = 30, limit: int = 10) -> dict[str, Any
         "top_topics": top_topics,
         "top_sources": top_sources,
         "daily_questions": daily_questions,
+        "confidence_points": confidence_points,
         "recommendations": recommendations,
     }

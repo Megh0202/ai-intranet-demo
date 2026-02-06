@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Header, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 
 from backend.chat_models import (
@@ -168,7 +169,12 @@ async def send_message(
                 ),
             )
 
-        payload = answer_query(req.content, settings=s, return_chunks=req.return_chunks)
+        payload = await run_in_threadpool(
+            answer_query,
+            req.content,
+            settings=s,
+            return_chunks=req.return_chunks,
+        )
         assistant_content = payload["answer"]
         assistant_meta = {
             "department": payload.get("department"),

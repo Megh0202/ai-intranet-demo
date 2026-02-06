@@ -84,6 +84,12 @@ class DailyQuestionCount(BaseModel):
     questions: int
 
 
+class ConfidencePoint(BaseModel):
+    index: int
+    confidence: float
+    response_id: str | None = None
+
+
 class AnalyticsSummary(BaseModel):
     from_date: datetime
     to_date: datetime
@@ -111,4 +117,5 @@ class AnalyticsResponse(BaseModel):
     top_topics: list[TopicStat]
     top_sources: list[SourceStat]
     daily_questions: list[DailyQuestionCount]
+    confidence_points: list[ConfidencePoint]
     recommendations: list[Recommendation]
